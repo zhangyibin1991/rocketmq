@@ -83,6 +83,9 @@ public class UtilAll {
         return sb.toString();
     }
 
+    /**
+     * 使用20位数字组成文件名.
+     */
     public static String offset2FileName(final long offset) {
         final NumberFormat nf = NumberFormat.getInstance();
         nf.setMinimumIntegerDigits(20);

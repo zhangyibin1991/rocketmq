@@ -48,6 +48,10 @@ public class CommitLog {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     // End of file empty MAGIC CODE cbd43194
     private final static int BLANK_MAGIC_CODE = -875286124;
+
+    /*
+     * MappedFile 所在的文件夹, 对 MappedFile 进行封装成文件队列, 对上层提供可无限使用的文件容量.
+     */
     private final MappedFileQueue mappedFileQueue;
     private final DefaultMessageStore defaultMessageStore;
     private final FlushCommitLogService flushCommitLogService;
@@ -64,14 +68,17 @@ public class CommitLog {
     private final PutMessageLock putMessageLock;
 
     public CommitLog(final DefaultMessageStore defaultMessageStore) {
-        this.mappedFileQueue = new MappedFileQueue(defaultMessageStore.getMessageStoreConfig().getStorePathCommitLog(),
-            defaultMessageStore.getMessageStoreConfig().getMapedFileSizeCommitLog(), defaultMessageStore.getAllocateMappedFileService());
+        this.mappedFileQueue = new MappedFileQueue(
+                defaultMessageStore.getMessageStoreConfig().getStorePathCommitLog(),
+                defaultMessageStore.getMessageStoreConfig().getMapedFileSizeCommitLog(),
+                defaultMessageStore.getAllocateMappedFileService()
+        );
         this.defaultMessageStore = defaultMessageStore;
 
         if (FlushDiskType.SYNC_FLUSH == defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
-            this.flushCommitLogService = new GroupCommitService();
+            this.flushCommitLogService = new GroupCommitService();   // 异步刷盘服务.
         } else {
-            this.flushCommitLogService = new FlushRealTimeService();
+            this.flushCommitLogService = new FlushRealTimeService(); // 同步刷盘服务.
         }
 
         this.commitLogService = new CommitRealTimeService();
@@ -525,6 +532,7 @@ public class CommitLog {
         return beginTimeInLock;
     }
 
+    /* 存储消息, 并返回结果. */
     public PutMessageResult putMessage(final MessageExtBrokerInner msg) {
         // Set the storage time
         msg.setStoreTimestamp(System.currentTimeMillis());
@@ -574,6 +582,7 @@ public class CommitLog {
             // global
             msg.setStoreTimestamp(beginLockTimestamp);
 
+            // 如果 `MappedFile` 不存在或已满, 则创建.
             if (null == mappedFile || mappedFile.isFull()) {
                 mappedFile = this.mappedFileQueue.getLastMappedFile(0); // Mark: NewFile may be cause noise
             }
@@ -1174,19 +1183,27 @@ public class CommitLog {
         private final ByteBuffer hostHolder = ByteBuffer.allocate(8);
 
         DefaultAppendMessageCallback(final int size) {
-            this.msgIdMemory = ByteBuffer.allocate(MessageDecoder.MSG_ID_LENGTH);
-            this.msgStoreItemMemory = ByteBuffer.allocate(size + END_FILE_MIN_BLANK_LENGTH);
-            this.maxMessageSize = size;
+            this.msgIdMemory = ByteBuffer.allocate(MessageDecoder.MSG_ID_LENGTH); // Message ID.
+            this.msgStoreItemMemory = ByteBuffer.allocate(size + END_FILE_MIN_BLANK_LENGTH); // Message 长度 + 固定文件末尾空余空间.
+            this.maxMessageSize = size; // 最大的 Message 长度.
         }
 
         public ByteBuffer getMsgStoreItemMemory() {
             return msgStoreItemMemory;
         }
 
+        /**
+         * 追加消息到字节缓存区
+         * @param fileFromOffset 消息在文件中偏移位置.
+         * @param byteBuffer ?????
+         * @param maxBlank ?????
+         * @param msgInner Message 消息.
+         */
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBrokerInner msgInner) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
 
+            // 物理偏移位置
             // PHY OFFSET
             long wroteOffset = fileFromOffset + byteBuffer.position();
 
@@ -1229,6 +1246,7 @@ public class CommitLog {
             final int propertiesLength = propertiesData == null ? 0 : propertiesData.length;
 
             if (propertiesLength > Short.MAX_VALUE) {
+                // 消息属性数据的长度超过最大值.
                 log.warn("putMessage message properties length too long. length={}", propertiesData.length);
                 return new AppendMessageResult(AppendMessageStatus.PROPERTIES_SIZE_EXCEEDED);
             }
@@ -1238,8 +1256,10 @@ public class CommitLog {
 
             final int bodyLength = msgInner.getBody() == null ? 0 : msgInner.getBody().length;
 
+            // 获取计算消息长度.
             final int msgLen = calMsgLength(bodyLength, topicLength, propertiesLength);
 
+            // Message 长度超过最大允许的长度限制.
             // Exceeds the maximum message
             if (msgLen > this.maxMessageSize) {
                 CommitLog.log.warn("message size exceeded, msg total size: " + msgLen + ", msg body size: " + bodyLength
@@ -1247,8 +1267,10 @@ public class CommitLog {
                 return new AppendMessageResult(AppendMessageStatus.MESSAGE_SIZE_EXCEEDED);
             }
 
+            // Message 长度超过预留的空白位置.
             // Determines whether there is sufficient free space
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
+                // 重置 Byte Buffer.
                 this.resetByteBuffer(this.msgStoreItemMemory, maxBlank);
                 // 1 TOTALSIZE
                 this.msgStoreItemMemory.putInt(maxBlank);
@@ -1329,6 +1351,9 @@ public class CommitLog {
             return result;
         }
 
+        /**
+         * 追加消息到消息缓冲区.
+         */
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBatch messageExtBatch) {
             byteBuffer.mark();

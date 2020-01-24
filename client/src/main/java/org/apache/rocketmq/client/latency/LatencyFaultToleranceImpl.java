@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.rocketmq.client.common.ThreadLocalIndex;
 
 public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> {
+
+    /* 用于维持各个对象的信息. */
     private final ConcurrentHashMap<String, FaultItem> faultItemTable = new ConcurrentHashMap<String, FaultItem>(16);
 
     private final ThreadLocalIndex whichItemWorst = new ThreadLocalIndex();
@@ -96,6 +98,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
             '}';
     }
 
+    /**
+     * 用于维护对象的名称、延时、服务可用开始时间信息.
+     */
     class FaultItem implements Comparable<FaultItem> {
         private final String name;
         private volatile long currentLatency;

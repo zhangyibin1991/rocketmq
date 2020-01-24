@@ -37,6 +37,9 @@ public class MappedFileQueue {
 
     private final String storePath;
 
+    /**
+     * Size of the `MappedSize`. 默认 1GB.
+     */
     private final int mappedFileSize;
 
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
@@ -203,7 +206,10 @@ public class MappedFileQueue {
             createOffset = mappedFileLast.getFileFromOffset() + this.mappedFileSize;
         }
 
+        /* 创建新的 `MappedFile`. */
         if (createOffset != -1 && needCreate) {
+            // 生成下一个 `MappedFile` 文件路径.
+            // 文件名由20位数字组成, 包含文件大小偏移量.
             String nextFilePath = this.storePath + File.separator + UtilAll.offset2FileName(createOffset);
             String nextNextFilePath = this.storePath + File.separator
                 + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
@@ -237,14 +243,19 @@ public class MappedFileQueue {
         return getLastMappedFile(startOffset, true);
     }
 
+    /*
+     * 如果存在 `MappedFile`, 返回集合中的最后一个; 否则返回 `null`.
+     */
     public MappedFile getLastMappedFile() {
         MappedFile mappedFileLast = null;
 
+        // 如果 `MappedFile` 集合不为空, 直接返回集合中最后一个.
         while (!this.mappedFiles.isEmpty()) {
             try {
                 mappedFileLast = this.mappedFiles.get(this.mappedFiles.size() - 1);
                 break;
             } catch (IndexOutOfBoundsException e) {
+                // 如果集合下标越界, 继续获取, 直到取到为止.
                 //continue;
             } catch (Exception e) {
                 log.error("getLastMappedFile has exception.", e);

@@ -24,13 +24,30 @@ import org.apache.rocketmq.common.message.MessageQueue;
 
 public class MQFaultStrategy {
     private final static InternalLogger log = ClientLogger.getLog();
+
+    /* 延迟故障荣错接口. */
     private final LatencyFaultTolerance<String> latencyFaultTolerance = new LatencyFaultToleranceImpl();
 
+    /* 默认情况下, 消息发送荣错是关闭的. */
     private boolean sendLatencyFaultEnable = false;
 
+    /**
+     * <pre>
+     * Producer发送消息消耗时长	Broker不可用时长
+     *  >= 15000 ms	            600 * 1000 ms
+     *  >= 3000 ms	            180 * 1000 ms
+     *  >= 2000 ms	            120 * 1000 ms
+     *  >= 1000 ms	            60 * 1000 ms
+     *  >= 550 ms	            30 * 1000 ms
+     *  >= 100 ms	            0 ms
+     *  >= 50 ms	            0 ms
+     * </pre>
+     */
     private long[] latencyMax = {50L, 100L, 550L, 1000L, 2000L, 3000L, 15000L};
     private long[] notAvailableDuration = {0L, 0L, 30000L, 60000L, 120000L, 180000L, 600000L};
 
+    // ------------------------------------------
+    /* Getters and setters */
     public long[] getNotAvailableDuration() {
         return notAvailableDuration;
     }
@@ -54,6 +71,7 @@ public class MQFaultStrategy {
     public void setSendLatencyFaultEnable(final boolean sendLatencyFaultEnable) {
         this.sendLatencyFaultEnable = sendLatencyFaultEnable;
     }
+    // ------------------------------------------
 
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
         if (this.sendLatencyFaultEnable) {
@@ -64,6 +82,7 @@ public class MQFaultStrategy {
                     if (pos < 0)
                         pos = 0;
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
+                    /* 选择的 `Broker` 是否可用. */
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName())) {
                         if (null == lastBrokerName || mq.getBrokerName().equals(lastBrokerName))
                             return mq;

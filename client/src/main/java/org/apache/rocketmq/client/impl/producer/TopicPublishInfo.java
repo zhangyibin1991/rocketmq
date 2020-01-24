@@ -71,6 +71,7 @@ public class TopicPublishInfo {
             return selectOneMessageQueue();
         } else {
             int index = this.sendWhichQueue.getAndIncrement();
+            /* 遍历队列数组, 挨个查找与指定的 `Broker` 相同的消息队列返回. */
             for (int i = 0; i < this.messageQueueList.size(); i++) {
                 int pos = Math.abs(index++) % this.messageQueueList.size();
                 if (pos < 0)
@@ -80,10 +81,14 @@ public class TopicPublishInfo {
                     return mq;
                 }
             }
+            // 如果未查询到, 直接返回下一个.
             return selectOneMessageQueue();
         }
     }
 
+    /**
+     * 顺序选取下一个队列作为消息发送队列返回.
+     */
     public MessageQueue selectOneMessageQueue() {
         int index = this.sendWhichQueue.getAndIncrement();
         int pos = Math.abs(index) % this.messageQueueList.size();
