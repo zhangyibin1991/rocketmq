@@ -1641,38 +1641,54 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 消费队列刷盘服务.
+     */
     class FlushConsumeQueueService extends ServiceThread {
         private static final int RETRY_TIMES_OVER = 3;
+
+        /** 最后刷盘时间戳 */
         private long lastFlushTimestamp = 0;
 
         private void doFlush(int retryTimes) {
+            // 需要刷新的页数.
             int flushConsumeQueueLeastPages = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueLeastPages();
 
             if (retryTimes == RETRY_TIMES_OVER) {
+                // 进行强制刷新, 主要用于 shutdown 时.
                 flushConsumeQueueLeastPages = 0;
             }
 
+            // 当时间间隔 > `flushConsumeQueueThoroughInterval` 时,
+            // 即使写入的页数不足 `flushConsumeQueueLeastPages`, 也进行 flush.
+            // 因为每次循环都能满足 `flushConsumeQueueLeastPages` 大小, 所以需要一定周期进行一次强刷;
+            // 当然也不能每次循环都强刷, 这样会影响性能.
             long logicsMsgTimestamp = 0;
 
             int flushConsumeQueueThoroughInterval = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueThoroughInterval();
             long currentTimeMillis = System.currentTimeMillis();
             if (currentTimeMillis >= (this.lastFlushTimestamp + flushConsumeQueueThoroughInterval)) {
+                // 如果时间间隔满足条件, 进行强刷.
                 this.lastFlushTimestamp = currentTimeMillis;
+                // 强刷.
                 flushConsumeQueueLeastPages = 0;
                 logicsMsgTimestamp = DefaultMessageStore.this.getStoreCheckpoint().getLogicsMsgTimestamp();
             }
 
             ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
 
+            /* flush 消费队列 */
             for (ConcurrentMap<Integer, ConsumeQueue> maps : tables.values()) {
                 for (ConsumeQueue cq : maps.values()) {
                     boolean result = false;
                     for (int i = 0; i < retryTimes && !result; i++) {
+                        // flush.
                         result = cq.flush(flushConsumeQueueLeastPages);
                     }
                 }
             }
 
+            /* flush 存储检查点 */
             if (0 == flushConsumeQueueLeastPages) {
                 if (logicsMsgTimestamp > 0) {
                     DefaultMessageStore.this.getStoreCheckpoint().setLogicsMsgTimestamp(logicsMsgTimestamp);
@@ -1710,8 +1726,14 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 消息重放组件.
+     */
     class ReputMessageService extends ServiceThread {
 
+        /**
+         * 开始重放消息的 CommitLog 物理位置.
+         */
         private volatile long reputFromOffset = 0;
 
         public long getReputFromOffset() {
@@ -1744,6 +1766,7 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private boolean isCommitLogAvailable() {
+            // 消息重放的位置比 CommitLog 中消息的位置偏移量要小.
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
 

@@ -640,12 +640,18 @@ public class CommitLog {
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).incrementAndGet();
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).addAndGet(result.getWroteBytes());
 
+        // 消息刷盘
         handleDiskFlush(result, putMessageResult, msg);
+        // Broker 主从同步
         handleHA(result, putMessageResult, msg);
 
         return putMessageResult;
     }
 
+    /**
+     * 消息刷盘.<br>
+     * 不同的刷盘策略调用的服务不通.
+     */
     public void handleDiskFlush(AppendMessageResult result, PutMessageResult putMessageResult, MessageExt messageExt) {
         // 同步刷盘
         // Synchronization flush
@@ -1199,15 +1205,15 @@ public class CommitLog {
         /**
          * 追加消息到字节缓存区
          * @param fileFromOffset 消息在文件中偏移位置.
-         * @param byteBuffer ?????
-         * @param maxBlank ?????
+         * @param byteBuffer 字节缓存区.
+         * @param maxBlank 最多允许插入的 BLANK 数量.
          * @param msgInner Message 消息.
          */
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBrokerInner msgInner) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
 
-            // 物理偏移位置
+            // 物理偏移位置; 文件位置的偏移量 + 字节缓存区写入偏移量.
             // PHY OFFSET
             long wroteOffset = fileFromOffset + byteBuffer.position();
 
