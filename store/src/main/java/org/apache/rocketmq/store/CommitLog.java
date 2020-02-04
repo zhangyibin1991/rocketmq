@@ -915,6 +915,10 @@ public class CommitLog {
         protected static final int RETRY_TIMES_OVER = 10;
     }
 
+    /**
+     * 异步刷盘 + 开启缓存.<br>
+     * 性能最好.
+     */
     class CommitRealTimeService extends FlushCommitLogService {
 
         private long lastCommitTimestamp = 0;
@@ -932,16 +936,21 @@ public class CommitLog {
 
                 int commitDataLeastPages = CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogLeastPages();
 
+                // 需要强制提交的时间间隔阈值.
                 int commitDataThoroughInterval =
                     CommitLog.this.defaultMessageStore.getMessageStoreConfig().getCommitCommitLogThoroughInterval();
 
+                // 该次提交开始时间.
                 long begin = System.currentTimeMillis();
+                // 判断是否超过强制 `commit` 阈值.
                 if (begin >= (this.lastCommitTimestamp + commitDataThoroughInterval)) {
                     this.lastCommitTimestamp = begin;
+                    // 强制 `commit`.
                     commitDataLeastPages = 0;
                 }
 
                 try {
+                    // `commit`
                     boolean result = CommitLog.this.mappedFileQueue.commit(commitDataLeastPages);
                     long end = System.currentTimeMillis();
                     if (!result) {
@@ -959,6 +968,7 @@ public class CommitLog {
                 }
             }
 
+            /* Stopped. */
             boolean result = false;
             for (int i = 0; i < RETRY_TIMES_OVER && !result; i++) {
                 result = CommitLog.this.mappedFileQueue.commit(0);
@@ -968,6 +978,9 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 异步刷盘.
+     */
     class FlushRealTimeService extends FlushCommitLogService {
         private long lastFlushTimestamp = 0;
         private long printTimes = 0;
@@ -975,6 +988,7 @@ public class CommitLog {
         public void run() {
             CommitLog.log.info(this.getServiceName() + " service started");
 
+            /* Loop. */
             while (!this.isStopped()) {
                 boolean flushCommitLogTimed = CommitLog.this.defaultMessageStore.getMessageStoreConfig().isFlushCommitLogTimed();
 
@@ -1048,7 +1062,6 @@ public class CommitLog {
             return 1000 * 60 * 5;
         }
     }
-
     public static class GroupCommitRequest {
         private final long nextOffset;
         private final CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -1082,9 +1095,15 @@ public class CommitLog {
      * GroupCommit Service
      */
     class GroupCommitService extends FlushCommitLogService {
+        // 写队列.
         private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>();
+        // 读队列.
         private volatile List<GroupCommitRequest> requestsRead = new ArrayList<GroupCommitRequest>();
 
+        /**
+         * 同步方法<br>
+         * 往写队列中放入(批量写入)请求.
+         */
         public synchronized void putRequest(final GroupCommitRequest request) {
             synchronized (this.requestsWrite) {
                 this.requestsWrite.add(request);
@@ -1094,6 +1113,9 @@ public class CommitLog {
             }
         }
 
+        /**
+         * 交换读写队列.
+         */
         private void swapRequests() {
             List<GroupCommitRequest> tmp = this.requestsWrite;
             this.requestsWrite = this.requestsRead;
@@ -1101,6 +1123,7 @@ public class CommitLog {
         }
 
         private void doCommit() {
+            // 同步.
             synchronized (this.requestsRead) {
                 if (!this.requestsRead.isEmpty()) {
                     for (GroupCommitRequest req : this.requestsRead) {
@@ -1137,6 +1160,7 @@ public class CommitLog {
 
             while (!this.isStopped()) {
                 try {
+                    // 每 10ms 执行一次批量提交.
                     this.waitForRunning(10);
                     this.doCommit();
                 } catch (Exception e) {
