@@ -104,6 +104,7 @@ public abstract class ServiceThread implements Runnable {
     }
 
     protected void waitForRunning(long interval) {
+        // `true` -> `false`.
         if (hasNotified.compareAndSet(true, false)) {
             this.onWaitEnd();
             return;
@@ -113,6 +114,7 @@ public abstract class ServiceThread implements Runnable {
         waitPoint.reset();
 
         try {
+            // 等待指定时间, 单位毫秒.
             waitPoint.await(interval, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             log.error("Interrupted", e);
