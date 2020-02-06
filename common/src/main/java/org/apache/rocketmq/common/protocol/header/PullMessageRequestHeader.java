@@ -25,25 +25,47 @@ import org.apache.rocketmq.remoting.annotation.CFNotNull;
 import org.apache.rocketmq.remoting.annotation.CFNullable;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 
+/**
+ * 拉取消息请求Header.<br>
+ * Topic + queueId + queueOffset + maxMsgNums
+ */
 public class PullMessageRequestHeader implements CommandCustomHeader {
+    /** 消费分组 */
     @CFNotNull
     private String consumerGroup;
+    /** Topic */
     @CFNotNull
     private String topic;
+    /** 队列编号 */
     @CFNotNull
     private Integer queueId;
+    /** 队列偏移量(开始位置) */
     @CFNotNull
     private Long queueOffset;
+    /** 消息数量 */
     @CFNotNull
     private Integer maxMsgNums;
+    /**
+     * 系统标识.<br>
+     * 第0位: FLAG_COMMIT_OFFSET, 标识请求提交消息进度位置, 和{@link #commitOffset}配合使用;<br>
+     * 第1位: FLAG_SUSPEND, 标识请求是否挂起, 和{@link #suspendTimeoutMillis}配合使用; 当拉取不到消息的时候, Broker会挂起请求, 最大挂起时间由{@link #suspendTimeoutMillis}参数指定.<br>
+     * 第2位: FLAG_SUBSCRIPTION, 标识是否启用过滤订阅表达式, 和{@link #subscription}配置;
+     */
     @CFNotNull
     private Integer sysFlag;
+    /** 消息提交位置 */
     @CFNotNull
     private Long commitOffset;
+    /** 挂起超时时间 */
     @CFNotNull
     private Long suspendTimeoutMillis;
+    /** 订阅信息 */
     @CFNullable
     private String subscription;
+    /**
+     * 订阅版本号;<br>
+     * 请求时, 如果版本号不对,则无法拉取到信息, 需要重新获取订阅信息, 使用最新的订阅版本号.
+     */
     @CFNotNull
     private Long subVersion;
     private String expressionType;
