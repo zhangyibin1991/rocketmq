@@ -557,18 +557,28 @@ public class PullMessageProcessor implements NettyRequestProcessor {
         }
     }
 
+    /**
+     * 执行请求唤醒, 即重新拉取消息.
+     * @param channel
+     * @param request Pull message request.
+     * @throws RemotingCommandException
+     */
     public void executeRequestWhenWakeup(final Channel channel,
         final RemotingCommand request) throws RemotingCommandException {
         Runnable run = new Runnable() {
             @Override
             public void run() {
                 try {
+                    // 调用拉取请求.
+                    // 调用不设置挂起.
                     final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
 
                     if (response != null) {
                         response.setOpaque(request.getOpaque());
                         response.markResponseType();
                         try {
+                            // Netty.
+                            // Write response.
                             channel.writeAndFlush(response).addListener(new ChannelFutureListener() {
                                 @Override
                                 public void operationComplete(ChannelFuture future) throws Exception {
@@ -591,6 +601,7 @@ public class PullMessageProcessor implements NettyRequestProcessor {
                 }
             }
         };
+        // Put execution into Thead-Pool.
         this.brokerController.getPullMessageExecutor().submit(new RequestTask(run, channel, request));
     }
 

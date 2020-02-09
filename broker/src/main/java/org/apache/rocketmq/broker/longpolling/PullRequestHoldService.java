@@ -29,11 +29,17 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.ConsumeQueueExt;
 
+/**
+ * 拉取消息请求挂起维护线程服务.<br>
+ * 当拉取消息请求获取不到消息的时候, 请求将会被挂起.<br>
+ * 当有符合条件的消息/挂起超时时, 重新执行获取消息逻辑.
+ */
 public class PullRequestHoldService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_QUEUEID_SEPARATOR = "@";
     private final BrokerController brokerController;
     private final SystemClock systemClock = new SystemClock();
+    /** 挂起请求集合. */
     private ConcurrentMap<String/* topic@queueId */, ManyPullRequest> pullRequestTable =
         new ConcurrentHashMap<String, ManyPullRequest>(1024);
 
@@ -41,6 +47,12 @@ public class PullRequestHoldService extends ServiceThread {
         this.brokerController = brokerController;
     }
 
+    /**
+     * 添加拉取消息请求到请求集合.
+     * @param topic Topic.
+     * @param queueId Queue Id.
+     * @param pullRequest 消息拉取请求.
+     */
     public void suspendPullRequest(final String topic, final int queueId, final PullRequest pullRequest) {
         String key = this.buildKey(topic, queueId);
         ManyPullRequest mpr = this.pullRequestTable.get(key);
@@ -63,14 +75,19 @@ public class PullRequestHoldService extends ServiceThread {
         return sb.toString();
     }
 
+    /**
+     * 定时检查挂起请求是否有需要通知重新拉取消息并进行通知.
+     */
     @Override
     public void run() {
         log.info("{} service started", this.getServiceName());
         while (!this.isStopped()) {
             try {
                 if (this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                    // 长轮训.
                     this.waitForRunning(5 * 1000);
                 } else {
+                    // 短轮训.
                     this.waitForRunning(this.brokerController.getBrokerConfig().getShortPollingTimeMills());
                 }
 
@@ -94,13 +111,18 @@ public class PullRequestHoldService extends ServiceThread {
     }
 
     private void checkHoldRequest() {
+        /* 遍历挂起请求, 检查是否有需要通知. */
         for (String key : this.pullRequestTable.keySet()) {
+            // AAA@BBB
+            // AAA - Topic.
+            // BBB - Queue id.
             String[] kArray = key.split(TOPIC_QUEUEID_SEPARATOR);
             if (2 == kArray.length) {
                 String topic = kArray[0];
                 int queueId = Integer.parseInt(kArray[1]);
                 final long offset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
                 try {
+                    // Notify.
                     this.notifyMessageArriving(topic, queueId, offset);
                 } catch (Throwable e) {
                     log.error("check hold request failed. topic={}, queueId={}", topic, queueId, e);
@@ -125,10 +147,13 @@ public class PullRequestHoldService extends ServiceThread {
                 for (PullRequest request : requestList) {
                     long newestOffset = maxOffset;
                     if (newestOffset <= request.getPullFromThisOffset()) {
+                        // 重新获取一次最新的.
                         newestOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
                     }
 
+                    /* 如果有新的匹配消息可以拉取, 唤醒请求, 再次拉取消息. */
                     if (newestOffset > request.getPullFromThisOffset()) {
+                        // Filter.
                         boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
                             new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
                         // match by bit map, need eval again when properties is not null.
@@ -138,6 +163,7 @@ public class PullRequestHoldService extends ServiceThread {
 
                         if (match) {
                             try {
+                                // Wake up.
                                 this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                     request.getRequestCommand());
                             } catch (Throwable e) {
@@ -147,8 +173,10 @@ public class PullRequestHoldService extends ServiceThread {
                         }
                     }
 
+                    /* 超过超时时间, 唤醒请求, 重新拉取消息. */
                     if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {
                         try {
+                            // Wake up.
                             this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                 request.getRequestCommand());
                         } catch (Throwable e) {
@@ -157,6 +185,7 @@ public class PullRequestHoldService extends ServiceThread {
                         continue;
                     }
 
+                    // 不符合唤醒请求重新添加到集合.
                     replayList.add(request);
                 }
 
