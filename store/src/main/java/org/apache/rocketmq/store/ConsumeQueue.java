@@ -24,6 +24,7 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+// 消费队列.
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -379,6 +380,7 @@ public class ConsumeQueue {
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
         for (int i = 0; i < maxRetries && canWrite; i++) {
+            /* 写入消息扩展信息. */
             long tagsCode = request.getTagsCode();
             if (isExtWriteEnable()) {
                 ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
@@ -417,24 +419,38 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * 添加位置信息, 并返回添加是否成功.
+     * @param offset `commitLog`偏移地址.
+     * @param size 消息大小.
+     * @param tagsCode tags code.
+     * @param cqOffset `consumeQueue`偏移地址.
+     */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
         final long cqOffset) {
 
+        // 如果已经重放, 直接返回.
         if (offset <= this.maxPhysicOffset) {
             return true;
         }
 
+        /* 写入位置信息到`byteBuffer`. */
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
-        this.byteBufferIndex.putLong(offset);
-        this.byteBufferIndex.putInt(size);
-        this.byteBufferIndex.putLong(tagsCode);
+        this.byteBufferIndex.putLong(offset);   // `commitLog` offset.
+        this.byteBufferIndex.putInt(size);      // size of `message`.
+        this.byteBufferIndex.putLong(tagsCode); // code of tags.
 
+        // 计算`consumerQueue`存储位置.
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
 
+        // 根据上面计算得到的存储位置获取`mappedFile`.
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);
         if (mappedFile != null) {
 
+            // 如果`consumeQueue`是第一个`mappedFile`
+            // && 队列位置不是第一个(即需要写入位置信息)
+            // && `mappedFile`未写入内容.
             if (mappedFile.isFirstCreateInQueue() && cqOffset != 0 && mappedFile.getWrotePosition() == 0) {
                 this.minLogicOffset = expectLogicOffset;
                 this.mappedFileQueue.setFlushedWhere(expectLogicOffset);
@@ -444,6 +460,7 @@ public class ConsumeQueue {
                     + mappedFile.getWrotePosition());
             }
 
+            /* 检验`consumerQueue`存储位置是否合法 */
             if (cqOffset != 0) {
                 long currentLogicOffset = mappedFile.getWrotePosition() + mappedFile.getFileFromOffset();
 

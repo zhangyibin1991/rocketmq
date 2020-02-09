@@ -257,15 +257,15 @@ public class CommitLog {
 
             byte[] bytesContent = new byte[totalSize];
 
-            int bodyCRC = byteBuffer.getInt();
+            int bodyCRC = byteBuffer.getInt(); // 消息内容CRC校验值.
 
-            int queueId = byteBuffer.getInt();
+            int queueId = byteBuffer.getInt(); // 队列ID.
 
             int flag = byteBuffer.getInt();
 
-            long queueOffset = byteBuffer.getLong();
+            long queueOffset = byteBuffer.getLong(); // 8字节的队列偏移量.
 
-            long physicOffset = byteBuffer.getLong();
+            long physicOffset = byteBuffer.getLong(); // 8字节的物理偏移地址
 
             int sysFlag = byteBuffer.getInt();
 

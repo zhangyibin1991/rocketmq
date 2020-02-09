@@ -49,7 +49,9 @@ public class PullMessageRequestHeader implements CommandCustomHeader {
      * 系统标识.<br>
      * 第0位: FLAG_COMMIT_OFFSET, 标识请求提交消息进度位置, 和{@link #commitOffset}配合使用;<br>
      * 第1位: FLAG_SUSPEND, 标识请求是否挂起, 和{@link #suspendTimeoutMillis}配合使用; 当拉取不到消息的时候, Broker会挂起请求, 最大挂起时间由{@link #suspendTimeoutMillis}参数指定.<br>
-     * 第2位: FLAG_SUBSCRIPTION, 标识是否启用过滤订阅表达式, 和{@link #subscription}配置;
+     * 第2位: FLAG_SUBSCRIPTION, 标识是否启用过滤订阅表达式, 和{@link #subscription}配置;<br>
+     * 第3位: FLAG_CLASS_FILTER.
+     * @see org.apache.rocketmq.common.sysflag.PullSysFlag
      */
     @CFNotNull
     private Integer sysFlag;
