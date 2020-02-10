@@ -143,11 +143,21 @@ public class MixAll {
         return 0;
     }
 
+    /**
+     * 将内容安全写入文件.<br>
+     * 1. 写到.tmp文件.<br>
+     * 2. 备份准备写入文件.bak文件.<br>
+     * 3. 删除原文件<br>
+     * @param str 内容.
+     * @param fileName 文件名.
+     */
     public static void string2File(final String str, final String fileName) throws IOException {
 
+        /* 写入.tmp文件. */
         String tmpFile = fileName + ".tmp";
         string2FileNotSafe(str, tmpFile);
 
+        /* 写如.bak文件. */
         String bakFile = fileName + ".bak";
         String prevContent = file2String(fileName);
         if (prevContent != null) {
@@ -158,9 +168,13 @@ public class MixAll {
         file.delete();
 
         file = new File(tmpFile);
+        // 临时文件 -> 正式文件.
         file.renameTo(new File(fileName));
     }
 
+    /**
+     * 将文件内容写入文件.(不安全的方式)
+     */
     public static void string2FileNotSafe(final String str, final String fileName) throws IOException {
         File file = new File(fileName);
         File fileParent = file.getParentFile();
@@ -181,11 +195,17 @@ public class MixAll {
         }
     }
 
+    /**
+     * 从文件中读取文本内容.
+     */
     public static String file2String(final String fileName) throws IOException {
         File file = new File(fileName);
         return file2String(file);
     }
 
+    /**
+     * 从文件中读取文本内容.
+     */
     public static String file2String(final File file) throws IOException {
         if (file.exists()) {
             byte[] data = new byte[(int) file.length()];
@@ -209,6 +229,9 @@ public class MixAll {
         return null;
     }
 
+    /**
+     * 从文件中读取文本内容.
+     */
     public static String file2String(final URL url) {
         InputStream in = null;
         try {
